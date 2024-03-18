@@ -13,25 +13,25 @@ runs:
       with:
         fetch-depth: 0
 
-    - name: Install Ollama
-      run: |
-        curl -fsSL https://ollama.com/install.sh | sh
-        ollama pull ${{ inputs.model }}
-      shell: bash
-
     - name: Get changed files
       id: changed-files
-      uses: tj-actions/changed-files@v43
+      run: |
+        echo "::set-output name=all_changed_files::$(git diff --name-only --diff-filter=ACMRT ${{ github.event.pull_request.base.sha }} ${{ github.sha }} | xargs)"
+      shell: bash
 
     - name: Review code
       env:
-        GITHUB_TOKEN: ${{ github.token }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
+        curl -fsSL https://ollama.com/install.sh | sh
+        ollama --version
+        ollama pull mistral
+
         for file in ${{ steps.changed-files.outputs.all_changed_files }}; do
-          review=$(curl -s http://127.0.0.1:11434/api/generate -d '{"model": "${{ inputs.model }}", "prompt": "Review the following file:\n\n```\n$(cat $file)\n```", "stream": false}' | jq -r '.response')
+          content=$(cat "$file")
+          review=$(curl -s http://127.0.0.1:11434/api/generate -d '{"model": "${{ inputs.model }}", "prompt": "Review the following file:\n\n```\n'"$content"'\n```", "stream": false}' | jq -r '.response')
           comment="Ollama Code Review for \`$file\`:\n\n$review"
           echo "$comment" >> ollama_review.txt
         done
-
         gh pr comment ${{ github.event.pull_request.number }} --body "$(cat ollama_review.txt)"
       shell: bash
