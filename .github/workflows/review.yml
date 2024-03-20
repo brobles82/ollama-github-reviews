@@ -10,7 +10,6 @@ jobs:
         uses: actions/checkout@v4.1.1
         with:
           fetch-depth: 0
-
         
       - name: Get changed files
         id: changed-files
@@ -21,7 +20,7 @@ jobs:
           curl -fsSL https://ollama.com/install.sh | sh
           sleep 5s
           ollama --version
-          ollama pull codellama
+          ollama pull mistral
 
       - name: Review code
         env:
@@ -33,17 +32,18 @@ jobs:
             # Prepare the file content, escaping for JSON
             content=$(jq -Rs . "$file")
             
-            # Create the JSON payload using jq, asking for a code review in the prompt
-            json=$(jq -n --arg content "You are a code reviewer. Your role is to provide a direct review of the code without asking for context or providing explanations. DO NOT EXPLAIN THE ACTUAL CODE and only return the review comments without saying 'the review for the code is' or explain what does the code, just comments for improve and correct the code or prevent possible bugs. AGAIN DONT EXPLAIN THE CODE just add CODE COMMENTS and give the full code for fix the issues you found. AGAIN if you think a file should be changed give the detailed and full code for the change\n code to review: $content\n" '{model: "codellama", prompt: $content, stream: false}')
+            # Create the JSON payload using jq
+            json=$(jq -n --arg content "$content" '{model: "mistral", prompt: ("system\nYou are a code reviewer. Your role is to provide a direct review of the code without asking for context or providing explanations. DO NOT EXPLAIN THE ACTUAL CODE and only return the review comments without saying '\''the review for the code is'\'' or explain what does the code, just comments for improve and correct the code or prevent possible bugs. AGAIN DONT EXPLAIN THE CODE just add CODE COMMENTS and give the full code for fix the issues you found. AGAIN if you think a file should be changed give the detailed and full code for the change. Use the updated code and avoid outdated or deprecated code plz.\nuser\nReview the following code file. Give code comments only plz. code to review: " + $content + "\n\n\n\nassistant"), stream: false}')
             
             # Send the request to the generate endpoint
-            review=$(curl http://127.0.0.1:11434/api/generate -d "$json" | jq -r '.response')
+            review=$(curl -s http://127.0.0.1:11434/api/generate -d "$json" | jq -r '.response')
             
             # Format and save the review comment
             comment="Ollama Code Review for \`$file\`:\n\n$review"
             echo "$comment" >> ollama_review.txt
           done
           
+          # Post the review comment to the PR
           gh pr comment ${{ github.event.pull_request.number }} --body "$(cat ollama_review.txt)" || echo "Unable to post comment. Possible permission issue."
         
         shell: bash
