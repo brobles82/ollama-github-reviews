@@ -1,0 +1,39 @@
+name: Code Review anthopic
+
+on: [pull_request]
+
+jobs:
+  review_code:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4.1.1
+        with:
+          fetch-depth: 0
+        
+      - name: Get changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v43
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+      
+      - name: Process files with Bun
+        env:
+          GITHUB_TOKEN: ${{ secrets.TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          echo "API Key is $ANTHROPIC_API_KEY"
+
+          touch coverage_results.txt
+
+          IFS=' ' read -r -a files <<< "${{ steps.changed-files.outputs.all_changed_files }}"
+          for file in "${files[@]}"; do
+            if [ -f "$file" ]; then
+              result=$(bun run generateCoverage.js "$ANTHROPIC_API_KEY" "$file")
+              echo "Coverage result for \`$file\`:\n\n\`\`\`\n$result\n\`\`\`" >> coverage_results.txt
+              echo "" >> coverage_results.txt
+            fi
+          done
+          
+          gh pr comment ${{ github.event.pull_request.number }} --body-file coverage_results.txt
