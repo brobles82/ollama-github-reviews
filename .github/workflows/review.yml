@@ -1,49 +1,49 @@
-name: Code Review Workflow
+# name: Code Review Workflow
 
-on: [pull_request]
+# on: [pull_request]
 
-jobs:
-  review_code:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4.1.1
-        with:
-          fetch-depth: 0
+# jobs:
+#   review_code:
+#     runs-on: ubuntu-latest
+#     steps:
+#       - name: Checkout code
+#         uses: actions/checkout@v4.1.1
+#         with:
+#           fetch-depth: 0
         
-      - name: Get changed files
-        id: changed-files
-        uses: tj-actions/changed-files@v43
+#       - name: Get changed files
+#         id: changed-files
+#         uses: tj-actions/changed-files@v43
 
-      - name: Install ollama and setup environment
-        run: |
-          curl -fsSL https://ollama.com/install.sh | sh
-          sleep 5s
-          ollama --version
-          ollama pull mistral
+#       - name: Install ollama and setup environment
+#         run: |
+#           curl -fsSL https://ollama.com/install.sh | sh
+#           sleep 5s
+#           ollama --version
+#           ollama pull mistral
 
-      - name: Review code
-        env:
-          GITHUB_TOKEN: ${{ secrets.TOKEN }}
-        run: |
-          touch ollama_review.txt
+#       - name: Review code
+#         env:
+#           GITHUB_TOKEN: ${{ secrets.TOKEN }}
+#         run: |
+#           touch ollama_review.txt
 
-          for file in ${{ steps.changed-files.outputs.all_changed_files }}; do
-            # Prepare the file content, escaping for JSON
-            content=$(jq -Rs . "$file")
+#           for file in ${{ steps.changed-files.outputs.all_changed_files }}; do
+#             # Prepare the file content, escaping for JSON
+#             content=$(jq -Rs . "$file")
             
-            # Create the JSON payload using jq
-            json=$(jq -n --arg content "$content" '{model: "mistral", prompt: ("system\nYou are a code reviewer. Your role is to provide a direct review of the code without asking for context or providing explanations. DO NOT EXPLAIN THE ACTUAL CODE and only return the review comments without saying '\''the review for the code is'\'' or explain what does the code, just comments for improve and correct the code or prevent possible bugs. AGAIN DONT EXPLAIN THE CODE just add CODE COMMENTS and give the full code for fix the issues you found. AGAIN if you think a file should be changed give the detailed and full code for the change. Use the updated code and avoid outdated or deprecated code plz.\nuser\nReview the following code file. Give code comments only plz. code to review: " + $content + "\n\n\n\nassistant"), stream: false}')
+#             # Create the JSON payload using jq
+#             json=$(jq -n --arg content "$content" '{model: "mistral", prompt: ("system\nYou are a code reviewer. Your role is to provide a direct review of the code without asking for context or providing explanations. DO NOT EXPLAIN THE ACTUAL CODE and only return the review comments without saying '\''the review for the code is'\'' or explain what does the code, just comments for improve and correct the code or prevent possible bugs. AGAIN DONT EXPLAIN THE CODE just add CODE COMMENTS and give the full code for fix the issues you found. AGAIN if you think a file should be changed give the detailed and full code for the change. Use the updated code and avoid outdated or deprecated code plz.\nuser\nReview the following code file. Give code comments only plz. code to review: " + $content + "\n\n\n\nassistant"), stream: false}')
             
-            # Send the request to the generate endpoint
-            review=$(curl -s http://127.0.0.1:11434/api/generate -d "$json" | jq -r '.response')
+#             # Send the request to the generate endpoint
+#             review=$(curl -s http://127.0.0.1:11434/api/generate -d "$json" | jq -r '.response')
             
-            # Format and save the review comment
-            comment="Ollama Code Review for \`$file\`:\n\n$review"
-            echo "$comment" >> ollama_review.txt
-          done
+#             # Format and save the review comment
+#             comment="Ollama Code Review for \`$file\`:\n\n$review"
+#             echo "$comment" >> ollama_review.txt
+#           done
           
-          # Post the review comment to the PR
-          gh pr comment ${{ github.event.pull_request.number }} --body "$(cat ollama_review.txt)" || echo "Unable to post comment. Possible permission issue."
+#           # Post the review comment to the PR
+#           gh pr comment ${{ github.event.pull_request.number }} --body "$(cat ollama_review.txt)" || echo "Unable to post comment. Possible permission issue."
         
-        shell: bash
+#         shell: bash

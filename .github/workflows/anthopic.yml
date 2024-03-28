@@ -1,63 +1,39 @@
-on: [push, pull_request]
+name: Code Review anthopic
+
+on: [pull_request]
 
 jobs:
-  build:
+  review_code:
     runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4.1.1
         with:
-          fetch-depth: 0 # Asegura un clon completo para operaciones detalladas
-      
-      - name: Set Matrix
-        id: set-matrix
-        run: |
-          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
-            BASE_SHA=$(git merge-base HEAD origin/${{ github.base_ref }})
-          elif [ "$(git rev-list --count HEAD^..HEAD)" -eq 1 ]; then
-            BASE_SHA=HEAD^
-          else
-            BASE_SHA=HEAD
-          fi
-          echo "Using base SHA: $BASE_SHA"
-          
-          FILE_LIST=$(git diff --diff-filter=d --name-only $BASE_SHA | jq -R -s -c 'split("\n")[:-1]')
-          if [ -z "$FILE_LIST" ] || [ "$FILE_LIST" = "[]" ]; then
-            echo "No files changed or empty list"
-            FILE_LIST="[]"
-          else
-            echo "Files changed: $FILE_LIST"
-          fi
-          
-          echo "FILES=$FILE_LIST" >> $GITHUB_ENV
-          # Asegúrate de que la matriz siempre es válida JSON
-          echo "matrix=${{ env.FILES }}" >> $GITHUB_OUTPUT
-
-      - name: Display matrix
-        run: echo "${{ steps.set-matrix.outputs.matrix }}"
-
-  process:
-    needs: build
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix: ${{fromJson(needs.build.outputs.matrix)}}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+          fetch-depth: 0
+        
+      - name: Get changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v43
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v1
-
-      - name: Run coverage
-        run: |
-          if [ "${{ matrix.file }}" != "[]" ]; then
-            file_content=$(cat ${{ matrix.file }})
-            bun run generateCoverage.js "${{ matrix.file }}" "$file_content"
-          else
-            echo "No files to process"
-          fi
+      
+      - name: Process files with Bun
         env:
+          GITHUB_TOKEN: ${{ secrets.TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          echo "API Key is $ANTHROPIC_API_KEY"
+
+          touch coverage_results.txt
+
+          IFS=' ' read -r -a files <<< "${{ steps.changed-files.outputs.all_changed_files }}"
+          for file in "${files[@]}"; do
+            if [ -f "$file" ]; then
+              result=$(bun run generateCoverage.js "$ANTHROPIC_API_KEY" "$file")
+              echo "Coverage result for \`$file\`:\n\n\`\`\`\n$result\n\`\`\`" >> coverage_results.txt
+              echo "" >> coverage_results.txt
+            fi
+          done
+          
+          gh pr comment ${{ github.event.pull_request.number }} --body-file coverage_results.txt
